@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="Canvas"/>
+  <g fill="none" stroke="CanvasText" stroke-width="1.5">
+    <circle cx="880" cy="315" r="44"/>
+    <circle cx="880" cy="315" r="76"/>
+    <circle cx="880" cy="315" r="108"/>
+    <circle cx="880" cy="315" r="140"/>
+    <circle cx="880" cy="315" r="172"/>
+    <circle cx="880" cy="315" r="204"/>
+    <circle cx="880" cy="315" r="236"/>
+    <circle cx="880" cy="315" r="268"/>
+    <circle cx="880" cy="315" r="300"/>
+  </g>
+  <circle cx="880" cy="315" r="7" fill="CanvasText"/>
+  <text x="88" y="191" fill="CanvasText" font-family="Georgia,serif" font-size="22" font-style="italic">
+    An Active Directory purple team lab
+  </text>
+  <text x="88" y="284" fill="CanvasText" font-family="Georgia,serif" font-size="60">
+    Nine modules.
+  </text>
+  <text x="88" y="360" fill="CanvasText" font-family="Georgia,serif" font-size="60">
+    Attack. Detect. Respond.
+  </text>
+  <text x="88" y="436" fill="CanvasText" font-family="Georgia,serif" font-size="60">
+    Harden.
+  </text>
+  <text x="88" y="524" fill="CanvasText" font-family="Georgia,serif" font-size="24">
+    Chakravyuha
+  </text>
+</svg>
