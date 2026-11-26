@@ -40,6 +40,7 @@ export const modules: {
   entries: number[]
   status: LabStatus
   statusNote?: string
+  writeUpUrl?: string
 }[] = [
   {
     n: 1,
@@ -51,6 +52,7 @@ export const modules: {
     status: 'executed',
     statusNote:
       'Executed in the lab. Attack, detection and hardening are complete and verified. The write-up is being prepared.',
+      writeUpUrl: 'https://blog.chakravyuha.tech/posts/post-4-kerberoasting',
   },
   {
     n: 2,

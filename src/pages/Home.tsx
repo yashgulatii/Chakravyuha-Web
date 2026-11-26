@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { ArrowLink, PageMeta } from '../components/Site'
 import { Formation } from '../components/Formation'
 import { lab, modules } from '../content/lab'
+import { useLabFeed, getExecutedModuleCount, getDocumentedModuleCount } from '../content/feed'
 import { ArchitectureDiagram } from './Shared'
 
 const method = [
@@ -34,9 +35,12 @@ function countWord(value: number) {
 }
 
 export function Home() {
+  const { data: feed } = useLabFeed()
   const moduleCount = modules.length
-  const executedCount = modules.filter((item) => item.status === 'executed').length
-  const documentedCount = modules.filter((item) => item.status === 'documented').length
+  const executedCount = feed ? getExecutedModuleCount(feed.modules) : modules.filter((item) => item.status === 'executed').length
+  const documentedCount = feed ? getDocumentedModuleCount(feed.modules) : modules.filter((item) => item.status === 'documented').length
+  const publishedCount = feed ? feed.publishedCount : lab.publishedPosts
+  const plannedPosts = feed ? feed.totalPlannedEntries : lab.plannedPosts
 
   return (
     <>
@@ -62,8 +66,8 @@ export function Home() {
 
         <p className="status-line mono">
           Modules executed: {executedCount} of {moduleCount} · Modules documented:{' '}
-          {documentedCount} of {moduleCount} · Entries published: {lab.publishedPosts} of{' '}
-          {lab.plannedPosts}
+                  {documentedCount} of {moduleCount} · Entries published: {publishedCount} of{' '}
+                  {plannedPosts}
         </p>
 
         <section className="method-section" aria-labelledby="method-title">

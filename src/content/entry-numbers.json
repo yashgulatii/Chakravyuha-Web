@@ -1,0 +1,20 @@
+{
+  "im-building-a-purple-team-ad-lab": 0,
+  "active-directory-from-zero": 1,
+  "kerberos-authentication-explained": 2,
+  "spns-the-attack-surface-most-people-dont-talk-about": 3,
+  "post-4-kerberos-delegation-attacks-explained": 4,
+  "post-5-module-1-kerberoasting-hardening": 5,
+  "post-6-module-2-as-rep-roasting": 6,
+  "post-7-module-3-dcsync": 7,
+  "post-8-module-4-golden-ticket": 8,
+  "post-9-module-5-silver-ticket": 9,
+  "post-10-module-6-trust-tickets": 10,
+  "post-11-module-7-kerberos-constrained-delegation": 11,
+  "post-12-module-8-resource-based-constrained-delegation": 12,
+  "post-13-module-9-shadow-credentials": 13,
+  "post-14-module-10-dacl-abuse": 14,
+  "post-15-module-11-gpo-abuse": 15,
+  "post-16-module-12-adcs-abuse": 16,
+  "post-17-module-13-persistence": 17
+}

@@ -2,6 +2,7 @@ import { Helmet } from 'react-helmet-async'
 import { Link } from 'react-router-dom'
 import { useEffect, useState, type ReactNode } from 'react'
 import { lab } from '../content/lab'
+import { useLabFeed, formatLastSynced } from '../content/feed'
 
 interface PageMetaProps {
   title: string
@@ -106,6 +107,9 @@ export function SiteHeader() {
 }
 
 export function SiteFooter() {
+  const { data: feed } = useLabFeed()
+  const lastSynced = feed ? formatLastSynced(new Date(feed.fetchedAt)) : null
+
   return (
     <footer className="site-footer">
       <p>{lab.name} · An Active Directory purple team lab</p>
@@ -117,6 +121,11 @@ export function SiteFooter() {
           <a href={lab.repoUrl} target="_blank" rel="noopener noreferrer">
             Repository ↗
           </a>
+        )}
+        {lastSynced && (
+          <span className="site-footer__synced" aria-live="polite">
+            Last synced: {lastSynced}
+          </span>
         )}
         <ThemeToggle />
       </div>
