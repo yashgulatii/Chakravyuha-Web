@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ArrowLink, PageMeta } from '../components/Site'
 import { foundation, lab, modules } from '../content/lab'
-import { useLabFeed, getModuleState, getFoundationText } from '../content/feed'
+import { useLabFeed, getModuleState } from '../content/feed'
 
 // Foundation as "Ring 0" - prep/foundational work
 const foundationModule = {
