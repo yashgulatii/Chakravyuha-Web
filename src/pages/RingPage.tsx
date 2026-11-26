@@ -6,7 +6,7 @@ import { useLabFeed, getModuleState } from '../content/feed'
 import { NotFound } from './NotFound'
 
 function statusText(status: 'planned' | 'executed' | 'documented') {
-  if (status === 'executed') return 'Executed Â· write-up pending'
+  if (status === 'executed') return 'Executed · write-up pending'
   return status
 }
 
@@ -33,12 +33,12 @@ export function RingPage() {
   return (
     <>
       <PageMeta
-        title={`Module ${module.n}: ${module.name} â€” ${lab.name}`}
+        title={`Module ${module.n}: ${module.name} — ${lab.name}`}
         path={`/ring/${module.n}`}
       />
       <main id="main-content" className="page-main page-fade">
         <div className="ring-page-heading">
-          <p className="kicker">Module {module.n} Â· {module.statusText}</p>
+          <p className="kicker">Module {module.n} · {module.statusText}</p>
           <h1>{module.name}</h1>
           <div className="ring-page-heading__formation">
             <Formation currentRing={module.n} compact />
@@ -75,14 +75,14 @@ export function RingPage() {
         <nav className="ring-pagination" aria-label="Ring navigation">
           {previousModule ? (
             <ArrowLink to={`/ring/${previousModule.n}`}>
-              â† Module {previousModule.n} Â· {previousModule.name}
+              ← Module {previousModule.n} · {previousModule.name}
             </ArrowLink>
           ) : (
             <span />
           )}
           {nextModule ? (
             <ArrowLink to={`/ring/${nextModule.n}`}>
-              Module {nextModule.n} Â· {nextModule.name} â†’
+              Module {nextModule.n} · {nextModule.name} →
             </ArrowLink>
           ) : (
             <span />
