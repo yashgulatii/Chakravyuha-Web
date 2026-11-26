@@ -4,7 +4,7 @@ import { decisions, gate, gateRule, lab } from '../content/lab'
 export function Scope() {
   return (
     <>
-      <PageMeta title={`Scope and rules — ${lab.name}`} path="/scope" />
+      <PageMeta title={`Scope and rules | ${lab.name}`} path="/scope" />
       <main id="main-content" className="page-main page-fade scope-page">
         <header className="page-heading">
           <p className="kicker">Boundaries before techniques</p>

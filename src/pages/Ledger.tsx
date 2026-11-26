@@ -33,7 +33,7 @@ export function Ledger() {
 
   return (
     <>
-      <PageMeta title={`Ledger — ${lab.name}`} path="/ledger" />
+      <PageMeta title={`Ledger | ${lab.name}`} path="/ledger" />
       <main id="main-content" className="page-main page-fade">
         <header className="page-heading">
           <p className="kicker">{modules.length + 1} rings · status from the lab</p>

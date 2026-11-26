@@ -33,7 +33,7 @@ export function RingPage() {
   return (
     <>
       <PageMeta
-        title={`Module ${module.n}: ${module.name} — ${lab.name}`}
+        title={`Module ${module.n}: ${module.name} | ${lab.name}`}
         path={`/ring/${module.n}`}
       />
       <main id="main-content" className="page-main page-fade">
