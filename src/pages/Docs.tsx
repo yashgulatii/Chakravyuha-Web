@@ -68,7 +68,7 @@ export function DocsIndex() {
       <main id="main-content" className="page-main docs-index">
         <div className="docs-container">
           <aside className="docs-sidebar-wrapper">
-            <DocSidebar docs={docs} currentSlug="overview" />
+            <DocSidebar docs={docs} currentSlug="" />
           </aside>
           <article className="docs-content">
             <header className="docs-header">

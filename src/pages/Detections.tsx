@@ -24,12 +24,14 @@ function DetectionTable({ rules }: { rules: DetectionRule[] }) {
           {rules.map((rule) => (
             <tr key={rule.path}>
               <td>
-                <Link
-                  to={`/docs/detections/${rule.path}`}
+                <a
+                  href={`${GITHUB_REPO}/blob/main/${rule.path}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="detection-link"
                 >
-                  {rule.name}
-                </Link>
+                  {rule.name} ↗
+                </a>
               </td>
               <td>{rule.title || '—'}</td>
               <td>
