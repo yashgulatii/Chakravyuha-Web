@@ -7,6 +7,12 @@ import type { DocFile } from '../content/feed'
 
 const GITHUB_REPO = 'https://github.com/yashgulatii/Chakravyuha'
 
+/** Extract a plain-text excerpt from HTML, stripping tags and limiting length */
+function extractExcerpt(html: string, maxLength: number): string {
+  const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  return text.length > maxLength ? text.slice(0, maxLength) + '…' : text
+}
+
 function useDocs() {
   const { data: feed, loading: feedLoading, error: feedError } = useLabFeed()
 
@@ -103,7 +109,12 @@ export function DocsIndex() {
                   .map((doc) => (
                     <Link key={doc.slug} to={`/docs/${doc.slug}`} className="docs-card">
                       <h3>{doc.title}</h3>
-                      <p>{doc.content?.slice(0, 200).replace(/[#*`_\[\]]/g, '')}…</p>
+                                  <div
+                                    className="docs-card-excerpt"
+                                    dangerouslySetInnerHTML={{
+                                      __html: doc.html ? extractExcerpt(doc.html, 200) : (doc.content?.slice(0, 200).replace(/[#*`_\[\]]/g, '') + '…'),
+                                    }}
+                                  />
                     </Link>
                   ))}
               </div>
