@@ -375,21 +375,41 @@ function deriveFoundationText(foundation, publishedEntries) {
 }
 
 async function main() {
-  try {
-    // Fetch all data sources
-    const feedData = await fetchFeed();
-    const modules = await fetchGitHubModules();
-    const readmes = await fetchModuleReadmes(modules);
-    const docs = await fetchDocFiles();
-    const detections = await fetchDetectionFiles();
+  let feedData = null;
+  let posts = [];
+  let enrichedPosts = [];
 
+  // Supabase/Hanodish feed fetch (client-side posts) — do NOT block GitHub fetching if this fails
+  try {
+    console.log('[fetch-feed] Fetching live feed from Supabase Edge Function...');
+    const response = await fetch(SUPABASE_FUNCTION_URL, {
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => null);
+      throw new Error(detail?.error ?? `Feed fetch failed with status ${response.status}`);
+    }
+    feedData = await response.json();
+    console.log(`[fetch-feed] Received ${feedData.posts?.length ?? 0} posts.`);
+  } catch (error) {
+    console.warn('[fetch-feed] Supabase feed fetch failed, using build-time cache fallback:', error.message);
+  }
+
+  posts = (feedData && feedData.posts) || [];
+  enrichedPosts = enrichPostsWithEntryNumbers(posts);
+
+  const modules = await fetchGitHubModules();
+  const readmes = await fetchModuleReadmes(modules);
+  const docs = await fetchDocFiles();
+  const detections = await fetchDetectionFiles();
+
+    try {
     // Attach readme content to modules
     const modulesWithReadmes = modules.map(m => ({
       ...m,
       readmeContent: readmes[m.slug] || null,
     }));
 
-    const enrichedPosts = enrichPostsWithEntryNumbers(feedData.posts || []);
     const publishedEntries = enrichedPosts.filter(p => p.entryNumber >= 0);
 
     // Derive module states from modules.yml + published entries
