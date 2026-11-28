@@ -1,34 +1,35 @@
 import { useMemo, useState } from 'react'
 import { ArrowLink, PageMeta } from '../components/Site'
-import { foundation, lab, modules } from '../content/lab'
-import { useLabFeed, getModuleState } from '../content/feed'
+import { lab } from '../content/lab'
+import { useLabFeed, type ModuleState } from '../content/feed'
 
 // Foundation as "Ring 0" - prep/foundational work
-const foundationModule = {
-  n: 0,
+const foundationModule: ModuleState = {
+  ring: 0,
+  slug: 'foundation',
   name: 'Foundation',
-  attack: ['Prep'],
-  keyEvent: 'Series intro & lab build',
-  tools: ['VMware', 'Windows Server', 'Wazuh', 'Sysmon'],
-  entries: foundation.entries, // [0, 1, 2, 3]
-  status: 'executed' as const,
-  statusNote: 'Lab environment built, tiered AD deployed, logging pipeline confirmed, deception layer placed.',
+  attack_id: 'Prep',
+  status: 'executed',
+  entries: [0, 1, 2, 3],
+  writeup: null,
+  evidence_dir: null,
+  readmeContent: null,
+  githubUrl: 'https://github.com/yashgulatii/Chakravyuha',
+  allEntriesPublished: true,
+  statusText: 'Foundation',
 }
 
 export function Ledger() {
   const [ascending, setAscending] = useState(true)
   const { data: feed } = useLabFeed()
   
-  // Include foundation as Ring 0 in the rows
-  const allModules = useMemo(
-    () => [foundationModule, ...modules].sort((left, right) => (ascending ? left.n - right.n : right.n - left.n)),
-    [ascending],
-  )
-
-  // Derive module states from feed (including foundation)
-  const moduleStates = useMemo(() => 
-      allModules.map(module => getModuleState(module, feed?.publishedEntries ?? [])),
-      [allModules, feed?.publishedEntries]
+  // Derive module states from feed (GitHub modules.yml + feed)
+  const moduleStates = feed?.modules ?? []
+  
+  // All modules including foundation
+  const allModules = useMemo(() => 
+    [foundationModule, ...moduleStates].sort((left, right) => (ascending ? left.ring - right.ring : right.ring - left.ring)),
+    [ascending, moduleStates]
   )
 
   return (
@@ -36,7 +37,7 @@ export function Ledger() {
       <PageMeta title={`Ledger | ${lab.name}`} path="/ledger" />
       <main id="main-content" className="page-main page-fade">
         <header className="page-heading">
-          <p className="kicker">{modules.length + 1} rings · status from the lab</p>
+          <p className="kicker">{moduleStates.length + 1} rings · status from GitHub</p>
           <h1>The ledger</h1>
         </header>
         <div className="table-scroll">
@@ -61,26 +62,26 @@ export function Ledger() {
               </tr>
             </thead>
             <tbody>
-              {allModules.map((item, index) => {
-                const state = moduleStates[index]
-                const isFoundation = item.n === 0
+              {allModules.map((state) => {
+                const isFoundation = state.ring === 0
                 return (
-                  <tr key={`${item.n}-${item.name}`} className={isFoundation ? 'foundation-row' : ''}>
+                  <tr key={`${state.ring}-${state.name}`} className={isFoundation ? 'foundation-row' : ''}>
                     <td data-label="Ring" className="mono">
-                      <ArrowLink to={isFoundation ? '#' : `/ring/${item.n}`} className="table-ring-link">
-                        {item.n}
+                      <ArrowLink to={isFoundation ? '#' : `/ring/${state.ring}`} className="table-ring-link">
+                        {state.ring}
                       </ArrowLink>
                     </td>
-                    <td data-label="Module">{item.name}</td>
-                    <td data-label="ATT&CK" className="mono">
-                      {item.attack.join(', ')}
+                    <td data-label="Module">{state.name}</td>
+                    <td data-label="ATT&CK" className="mono">{state.attack_id}</td>
+                    <td data-label="Key event" className="mono">
+                      {isFoundation ? 'Series intro & lab build' : 
+                       state.entries.length > 0 ? `Entry ${state.entries[0]}` : '—'}
                     </td>
-                    <td data-label="Key event" className="mono">{item.keyEvent}</td>
                     <td data-label="Lab status">
                       <span className={`status status--${state.status}`}>{state.statusText}</span>
                     </td>
                     <td data-label="Entries" className="mono">
-                      {item.entries.map((entry, entryIndex) => {
+                      {state.entries.map((entry, entryIndex) => {
                         const entryPost = feed?.posts.find(p => p.entryNumber === entry)
                         const entryUrl = entryPost ? `${lab.blogUrl}/posts/${encodeURIComponent(entryPost.slug)}` : '#'
                         const isPublished = !!entryPost

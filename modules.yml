@@ -1,0 +1,86 @@
+# Chakravyuha Lab Modules — Single Source of Truth
+# This file is the canonical module status registry. All site status, counts, and detail views derive from this.
+# Ring 1 is executed and documented; rings 2–9 are planned until actually executed.
+# Writeup paths are relative to repo root. Evidence directories are relative to repo root.
+# Entries correspond to published Field Notes post numbers (zero-padded: 00, 01, 02, ...).
+
+- ring: 1
+  slug: kerberoasting
+  name: Kerberoasting
+  attack_id: T1558.003
+  status: executed
+  writeup: modules/01-kerberoasting/README.md
+  evidence_dir: modules/01-kerberoasting/evidence/
+  entries: [4, 5]  # Blog post numbers per Field Notes (Post 4 = kerberoasting attack, Post 5 = hardening)
+
+- ring: 2
+  slug: as-rep-roasting
+  name: AS-REP Roasting
+  attack_id: T1558.004
+  status: planned
+  writeup: null
+  evidence_dir: null
+  entries: [6]
+
+- ring: 3
+  slug: pass-the-hash
+  name: Pass-the-Hash
+  attack_id: T1550.002
+  status: planned
+  writeup: null
+  evidence_dir: null
+  entries: [7]
+
+- ring: 4
+  slug: pass-the-ticket
+  name: Pass-the-Ticket / Silver Ticket
+  attack_id: T1558.002
+  status: planned
+  writeup: null
+  evidence_dir: null
+  entries: [8]
+
+- ring: 5
+  slug: golden-ticket
+  name: Golden Ticket
+  attack_id: T1558.001
+  status: planned
+  writeup: null
+  evidence_dir: null
+  entries: [9]
+
+- ring: 6
+  slug: dcsync
+  name: DCSync
+  attack_id: T1003.006
+  status: planned
+  writeup: null
+  evidence_dir: null
+  entries: [10]
+
+- ring: 7
+  slug: bloodhound-acl-abuse
+  name: BloodHound ACL Abuse
+  attack_id: T1078.002
+  status: planned
+  writeup: null
+  evidence_dir: null
+  entries: [11]
+
+- ring: 8
+  slug: laps-bypass
+  name: LAPS Bypass
+  attack_id: T1555
+  status: planned
+  writeup: null
+  evidence_dir: null
+  entries: [12]
+
+- ring: 9
+  slug: ad-cs-esc1
+  name: AD CS ESC1
+  attack_id: T1649
+  status: planned
+  writeup: null
+  evidence_dir: null
+  entries: [13]

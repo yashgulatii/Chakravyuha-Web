@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * Prebuild script: fetches the live Hashnode feed from the Supabase Edge Function
+ * Prebuild script: fetches the live Hashnode feed from the Supabase Edge Function,
+ * fetches modules.yml and module READMEs from GitHub,
  * and writes a snapshot to src/content/feed-cache.json for build-time fallback.
  *
  * This runs during `npm run build` (via "prebuild" script in package.json).
- * If the fetch fails, the script exits non-zero but does not overwrite any existing
+ * If any fetch fails, the script exits non-zero but does not overwrite any existing
  * cache, preserving the last good snapshot.
  */
 
@@ -12,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SUPABASE_FUNCTION_URL = 'https://tupmnabopwmxamloscjb.supabase.co/functions/v1/hashnode-feed';
+const GITHUB_RAW_BASE = 'https://raw.githubusercontent.com/yashgulatii/Chakravyuha/main';
 const CACHE_PATH = path.join(__dirname, '..', 'src', 'content', 'feed-cache.json');
 
 async function fetchFeed() {
@@ -28,6 +30,53 @@ async function fetchFeed() {
   const data = await response.json();
   console.log(`[fetch-feed] Received ${data.posts?.length ?? 0} posts.`);
   return data;
+}
+
+async function fetchGitHubModules() {
+  console.log('[fetch-feed] Fetching modules.yml from GitHub...');
+  const response = await fetch(`${GITHUB_RAW_BASE}/modules.yml`, {
+    headers: { Accept: 'application/yaml' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`modules.yml fetch failed with status ${response.status}`);
+  }
+
+  const yamlText = await response.text();
+  console.log('[fetch-feed] modules.yml fetched successfully');
+
+  // Parse YAML
+  const yaml = require('js-yaml');
+  const modules = yaml.load(yamlText);
+  console.log(`[fetch-feed] Parsed ${modules?.length ?? 0} modules from modules.yml`);
+  return modules;
+}
+
+async function fetchModuleReadmes(modules) {
+  const readmes = {};
+
+  for (const module of modules) {
+    if (module.writeup && module.status === 'executed') {
+      try {
+        console.log(`[fetch-feed] Fetching README for ${module.slug}...`);
+        const response = await fetch(`${GITHUB_RAW_BASE}/${module.writeup}`, {
+          headers: { Accept: 'text/markdown' },
+        });
+
+        if (response.ok) {
+          const content = await response.text();
+          readmes[module.slug] = content;
+          console.log(`[fetch-feed] README fetched for ${module.slug}`);
+        } else {
+          console.warn(`[fetch-feed] Failed to fetch README for ${module.slug}: ${response.status}`);
+        }
+      } catch (error) {
+        console.warn(`[fetch-feed] Error fetching README for ${module.slug}:`, error.message);
+      }
+    }
+  }
+
+  return readmes;
 }
 
 function enrichPostsWithEntryNumbers(posts) {
@@ -68,20 +117,11 @@ function deriveModuleStates(modules, publishedEntries) {
     );
 
     // Module states: planned -> executed -> documented
-    // "documented" only when write-up exists AND all entries published
-    // Since write-ups are tracked separately (RingPage shows "write-up pending"),
-    // we check if the module has a write-up URL (meaning documented content exists)
-    const hasWriteUp = Boolean(module.writeUpUrl);
-
-    let status;
-    if (module.status === 'documented' && hasWriteUp && allPublished) {
-      status = 'documented';
-    } else if (module.status === 'executed' || module.status === 'documented') {
-      // If it was previously executed/documented, keep executed unless fully documented
-      status = hasWriteUp && allPublished ? 'documented' : 'executed';
-    } else {
-      status = 'planned';
-    }
+    // "documented" = status executed AND writeup file successfully fetched AND all entries published
+    const hasWriteUp = Boolean(module.writeup && module.readmeContent);
+    const status = module.status === 'executed' && hasWriteUp && allPublished
+      ? 'documented'
+      : module.status;
 
     return { ...module, status, allEntriesPublished: allPublished };
   });
@@ -101,19 +141,37 @@ function deriveFoundationText(foundation, publishedEntries) {
 
 async function main() {
   try {
+    // Fetch all data sources
     const feedData = await fetchFeed();
+    const modules = await fetchGitHubModules();
+    const readmes = await fetchModuleReadmes(modules);
+
+    // Attach readme content to modules
+    const modulesWithReadmes = modules.map(m => ({
+      ...m,
+      readmeContent: readmes[m.slug] || null,
+    }));
+
     const enrichedPosts = enrichPostsWithEntryNumbers(feedData.posts || []);
     const publishedEntries = enrichedPosts.filter(p => p.entryNumber >= 0);
 
-    // Load lab.ts to get module definitions and foundation
-    const labPath = path.join(__dirname, '..', 'src', 'content', 'lab.ts');
-    const labContent = fs.readFileSync(labPath, 'utf-8');
+    // Derive module states from modules.yml + published entries
+    const derivedModules = deriveModuleStates(modulesWithReadmes, publishedEntries);
 
-    // Extract modules and foundation from lab.ts (simplified - we import the actual module in feed.ts at runtime)
-    // For the build-time cache, we store the raw feed data + metadata
+    // Foundation from modules.yml (first module or dedicated foundation entry)
+    // For now, use ring 1 entries as foundation (entries 0-3 are pre-lab)
+    const foundation = {
+      entries: [0, 1, 2, 3],
+    };
+    const foundationText = deriveFoundationText(foundation, publishedEntries);
+
+    // Build cache
     const cache = {
       posts: enrichedPosts,
-      fetchedAt: feedData.fetchedAt || new Date().toISOString(),
+      modules: derivedModules,
+      moduleReadmes: readmes,
+      foundationText,
+      fetchedAt: new Date().toISOString(),
       publishedCount: publishedEntries.length,
       totalPlannedEntries: 18,
     };
@@ -121,6 +179,7 @@ async function main() {
     fs.writeFileSync(CACHE_PATH, JSON.stringify(cache, null, 2));
     console.log(`[fetch-feed] Cache written to ${CACHE_PATH}`);
     console.log(`[fetch-feed] Published entries: ${publishedEntries.length} of 18`);
+    console.log(`[fetch-feed] Modules: ${derivedModules.filter(m => m.status === 'executed').length} executed, ${derivedModules.filter(m => m.status === 'documented').length} documented`);
   } catch (error) {
     console.error('[fetch-feed] ERROR:', error.message);
 

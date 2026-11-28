@@ -1,4 +1,3 @@
-import { modules, foundation } from './lab';
 import entryNumbers from './entry-numbers.json' with { type: 'json' };
 import feedCache from './feed-cache.json' with { type: 'json' };
 
@@ -29,25 +28,24 @@ export interface LabFeedData {
   totalPlannedEntries: number;
   modules: ModuleState[];
   foundationText: string;
-  fetchedAt: string; // ISO string from the feed
+  fetchedAt: string;
   lastSynced: Date | null;
   isStale: boolean;
 }
 
 export interface ModuleState {
-  n: number;
-  id: string;
+  ring: number;
+  slug: string;
   name: string;
-  attack: string[];
-  keyEvent: string;
-  tools: string[];
-  entries: number[];
+  attack_id: string;
   status: 'planned' | 'executed' | 'documented';
-  statusNote?: string;
-  statusText: string;
+  entries: number[];
+  writeup: string | null;
+  evidence_dir: string | null;
+  readmeContent: string | null; // Fetched module README content
+  githubUrl: string; // Link to module folder on GitHub
   allEntriesPublished: boolean;
-  hasWriteUp: boolean;
-  writeUpUrl?: string;
+  statusText: string;
 }
 
 export interface FoundationState {
@@ -58,28 +56,39 @@ export interface FoundationState {
   allPublished: boolean;
 }
 
+// GitHub module from modules.yml
+interface GitHubModule {
+  ring: number;
+  slug: string;
+  name: string;
+  attack_id: string;
+  status: 'planned' | 'executed';
+  writeup: string | null;
+  evidence_dir: string | null;
+  entries: number[];
+}
+
 // --- Constants ---
 
 const SUPABASE_FUNCTION_URL = 'https://tupmnabopwmxamloscjb.supabase.co/functions/v1/hashnode-feed';
+const GITHUB_RAW_BASE = 'https://raw.githubusercontent.com/yashgulatii/Chakravyuha/main';
+const GITHUB_REPO_URL = 'https://github.com/yashgulatii/Chakravyuha';
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const STORAGE_KEY = 'chakravyuha-feed-cache';
 const STORAGE_TIMESTAMP_KEY = 'chakravyuha-feed-timestamp';
+const MODULES_STORAGE_KEY = 'chakravyuha-modules-cache';
+const MODULES_STORAGE_TIMESTAMP_KEY = 'chakravyuha-modules-timestamp';
 
 // --- Entry Number Resolution ---
 
 function resolveEntryNumber(slug: string): number {
-  // Priority 1: explicit mapping file
   if (slug in entryNumbers) {
     return entryNumbers[slug as keyof typeof entryNumbers];
   }
-
-  // Priority 2: slug regex /^post-(\d+)-/
   const slugMatch = /^post-(\d+)-/.exec(slug);
   if (slugMatch) {
     return Number(slugMatch[1]);
   }
-
-  // Priority 3: unresolvable
   return -1;
 }
 
@@ -90,28 +99,22 @@ function enrichPostsWithEntryNumbers(posts: Omit<Post, 'entryNumber'>[]): Post[]
   }));
 }
 
-// --- Module State Derivation ---
+// --- Module State Derivation from GitHub Data ---
 
-export function getModuleState(
-  module: typeof modules[0],
+function getModuleState(
+  ghModule: GitHubModule,
+  readmeContent: string | null,
   publishedEntries: Post[]
 ): ModuleState {
   const publishedEntryNumbers = new Set(publishedEntries.map(e => e.entryNumber));
-  const entriesForModule = module.entries || [];
-  const allPublished = entriesForModule.every((entryNum: number) =>
-    publishedEntryNumbers.has(entryNum)
-  );
+  const entriesForModule = ghModule.entries || [];
+  const allPublished = entriesForModule.every(entryNum => publishedEntryNumbers.has(entryNum));
 
-  const hasWriteUp = Boolean(module.writeUpUrl);
-
-  let status: 'planned' | 'executed' | 'documented';
-  if (module.status === 'documented' && hasWriteUp && allPublished) {
-    status = 'documented';
-  } else if (module.status === 'executed' || module.status === 'documented') {
-    status = hasWriteUp && allPublished ? 'documented' : 'executed';
-  } else {
-    status = 'planned';
-  }
+  // "documented" = status executed AND writeup file successfully fetched AND all entries published
+  const hasWriteUp = Boolean(ghModule.writeup && readmeContent);
+  const status = ghModule.status === 'executed' && hasWriteUp && allPublished
+    ? 'documented'
+    : ghModule.status;
 
   let statusText: string;
   if (status === 'planned') {
@@ -122,33 +125,38 @@ export function getModuleState(
     statusText = 'Documented';
   }
 
+  const githubUrl = `${GITHUB_REPO_URL}/tree/main/modules/${ghModule.slug}/`;
+
   return {
-    n: module.n,
-    id: module.name.toLowerCase().replace(/\s+/g, '-'),
-    name: module.name,
-    attack: module.attack,
-    keyEvent: module.keyEvent,
-    tools: module.tools,
-    entries: entriesForModule,
+    ring: ghModule.ring,
+    slug: ghModule.slug,
+    name: ghModule.name,
+    attack_id: ghModule.attack_id,
     status,
-    statusNote: module.statusNote,
-    statusText,
+    entries: entriesForModule,
+    writeup: ghModule.writeup,
+    evidence_dir: ghModule.evidence_dir,
+    readmeContent,
+    githubUrl,
     allEntriesPublished: allPublished,
-    hasWriteUp,
-    writeUpUrl: module.writeUpUrl,
+    statusText,
   };
 }
 
-function deriveModuleStates(_modules: typeof modules, publishedEntries: Post[]): ModuleState[] {
-  return modules.map(module => getModuleState(module, publishedEntries));
+function deriveModuleStates(
+  ghModules: GitHubModule[],
+  readmes: Record<string, string>,
+  publishedEntries: Post[]
+): ModuleState[] {
+  return ghModules.map(m => getModuleState(m, readmes[m.slug] || null, publishedEntries));
 }
 
 // --- Foundation State Derivation ---
 
 export function getFoundationText(publishedEntries: Post[]): string {
   const publishedEntryNumbers = new Set(publishedEntries.map(e => e.entryNumber));
-  const foundationEntries = foundation.entries || [0, 1, 2, 3];
-  const publishedCount = foundationEntries.filter((n: number) => publishedEntryNumbers.has(n)).length;
+  const foundationEntries = [0, 1, 2, 3];
+  const publishedCount = foundationEntries.filter(n => publishedEntryNumbers.has(n)).length;
   const allPublished = publishedCount === foundationEntries.length;
 
   if (allPublished) {
@@ -158,10 +166,10 @@ export function getFoundationText(publishedEntries: Post[]): string {
   }
 }
 
-function deriveFoundationState(_foundation: typeof foundation, publishedEntries: Post[]): FoundationState {
+function deriveFoundationState(publishedEntries: Post[]): FoundationState {
   const publishedEntryNumbers = new Set(publishedEntries.map(e => e.entryNumber));
-  const foundationEntries = foundation.entries || [0, 1, 2, 3];
-  const publishedCount = foundationEntries.filter((n: number) => publishedEntryNumbers.has(n)).length;
+  const foundationEntries = [0, 1, 2, 3];
+  const publishedCount = foundationEntries.filter(n => publishedEntryNumbers.has(n)).length;
   const allPublished = publishedCount === foundationEntries.length;
 
   let text: string;
@@ -171,16 +179,10 @@ function deriveFoundationState(_foundation: typeof foundation, publishedEntries:
     text = `Foundation entries ${foundationEntries[0]}-${foundationEntries[foundationEntries.length - 1]}: ${publishedCount} of ${foundationEntries.length} published`;
   }
 
-  return {
-    entries: foundationEntries,
-    text,
-    publishedCount,
-    totalCount: foundationEntries.length,
-    allPublished,
-  };
+  return { entries: foundationEntries, text, publishedCount, totalCount: foundationEntries.length, allPublished };
 }
 
-// --- Cache Management ---
+// --- Cache Management (Feed - localStorage) ---
 
 function getCachedData(): { data: FeedResponse; timestamp: number } | null {
   try {
@@ -189,9 +191,7 @@ function getCachedData(): { data: FeedResponse; timestamp: number } | null {
     if (cached && timestamp) {
       return { data: JSON.parse(cached), timestamp: Number(timestamp) };
     }
-  } catch {
-    // Ignore localStorage errors
-  }
+  } catch {}
   return null;
 }
 
@@ -199,13 +199,84 @@ function setCachedData(data: FeedResponse): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     localStorage.setItem(STORAGE_TIMESTAMP_KEY, Date.now().toString());
-  } catch {
-    // Ignore localStorage errors (private browsing, quota exceeded, etc.)
-  }
+  } catch {}
 }
 
 function isCacheFresh(timestamp: number): boolean {
   return Date.now() - timestamp < CACHE_TTL_MS;
+}
+
+// --- Modules Cache Management (GitHub - localStorage, longer TTL) ---
+
+const MODULES_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+function getModulesCache(): { modules: GitHubModule[]; readmes: Record<string, string>; timestamp: number } | null {
+  try {
+    const cached = localStorage.getItem(MODULES_STORAGE_KEY);
+    const timestamp = localStorage.getItem(MODULES_STORAGE_TIMESTAMP_KEY);
+    if (cached && timestamp) {
+      return { ...JSON.parse(cached), timestamp: Number(timestamp) };
+    }
+  } catch {}
+  return null;
+}
+
+function setModulesCache(modules: GitHubModule[], readmes: Record<string, string>): void {
+  try {
+    localStorage.setItem(MODULES_STORAGE_KEY, JSON.stringify({ modules, readmes }));
+    localStorage.setItem(MODULES_STORAGE_TIMESTAMP_KEY, Date.now().toString());
+  } catch {}
+}
+
+function isModulesCacheFresh(timestamp: number): boolean {
+  return Date.now() - timestamp < MODULES_CACHE_TTL_MS;
+}
+
+// --- GitHub Fetching ---
+
+async function fetchGitHubModules(signal?: AbortSignal): Promise<{ modules: GitHubModule[]; readmes: Record<string, string> }> {
+  // Try localStorage cache first
+  const cached = getModulesCache();
+  if (cached && isModulesCacheFresh(cached.timestamp)) {
+    return { modules: cached.modules, readmes: cached.readmes };
+  }
+
+  // Fetch modules.yml
+  const modulesResponse = await fetch(`${GITHUB_RAW_BASE}/modules.yml`, {
+    signal,
+    headers: { Accept: 'application/yaml' },
+  });
+
+  if (!modulesResponse.ok) {
+    throw new Error(`modules.yml fetch failed with status ${modulesResponse.status}`);
+  }
+
+  const yamlText = await modulesResponse.text();
+  const yaml = await import('js-yaml');
+  const modules = yaml.load(yamlText) as GitHubModule[];
+
+  // Fetch READMEs for executed modules with writeup
+  const readmes: Record<string, string> = {};
+  for (const module of modules) {
+    if (module.writeup && module.status === 'executed') {
+      try {
+        const readmeResponse = await fetch(`${GITHUB_RAW_BASE}/${module.writeup}`, {
+          signal,
+          headers: { Accept: 'text/markdown' },
+        });
+        if (readmeResponse.ok) {
+          readmes[module.slug] = await readmeResponse.text();
+        }
+      } catch {
+        // Ignore individual README fetch failures
+      }
+    }
+  }
+
+  // Cache for 1 hour
+  setModulesCache(modules, readmes);
+
+  return { modules, readmes };
 }
 
 // --- Feed Fetching ---
@@ -227,7 +298,21 @@ async function fetchFeed(signal?: AbortSignal): Promise<FeedResponse> {
 // --- Main Feed Logic ---
 
 export async function getLabFeedData(forceRefresh = false): Promise<LabFeedData> {
-  // 1. Try to get cached data (localStorage with 10-min TTL)
+  // 1. Get GitHub modules (with localStorage cache)
+  let ghModules: GitHubModule[];
+  let readmes: Record<string, string>;
+  try {
+    const { modules, readmes: fetchedReadmes } = await fetchGitHubModules();
+    ghModules = modules;
+    readmes = fetchedReadmes;
+  } catch (error) {
+    // Fall back to build-time cache if available
+    console.warn('[feed] GitHub modules fetch failed, using build-time cache:', error);
+    ghModules = (feedCache as any).modules || [];
+    readmes = (feedCache as any).moduleReadmes || {};
+  }
+
+  // 2. Try to get cached feed data (localStorage with 10-min TTL)
   const cached = getCachedData();
   const hasFreshCache = cached && isCacheFresh(cached.timestamp);
 
@@ -236,11 +321,9 @@ export async function getLabFeedData(forceRefresh = false): Promise<LabFeedData>
   let isStale = false;
 
   if (hasFreshCache && !forceRefresh) {
-    // Use fresh localStorage cache
     feedData = cached.data;
     lastSynced = new Date(cached.timestamp);
   } else {
-    // 2. Try to fetch fresh data from Supabase
     try {
       const freshData = await fetchFeed();
       const enrichedPosts = enrichPostsWithEntryNumbers(freshData.posts);
@@ -248,15 +331,13 @@ export async function getLabFeedData(forceRefresh = false): Promise<LabFeedData>
       setCachedData(feedData);
       lastSynced = new Date(feedData.fetchedAt);
     } catch (error) {
-      // 3. Fetch failed - fall back to localStorage cache (even if stale)
       if (cached) {
-        console.warn('[feed] Fetch failed, using stale localStorage cache:', error);
+        console.warn('[feed] Feed fetch failed, using stale localStorage cache:', error);
         feedData = cached.data;
         lastSynced = new Date(cached.timestamp);
         isStale = true;
       } else {
-        // 4. No localStorage cache - fall back to build-time cache
-        console.warn('[feed] Fetch failed and no localStorage cache, using build-time cache:', error);
+        console.warn('[feed] Feed fetch failed and no localStorage cache, using build-time cache:', error);
         feedData = feedCache as unknown as FeedResponse;
         lastSynced = new Date(feedData.fetchedAt);
         isStale = true;
@@ -264,19 +345,19 @@ export async function getLabFeedData(forceRefresh = false): Promise<LabFeedData>
     }
   }
 
-  // 5. Derive state from feed data
+  // 3. Derive module states from GitHub modules + published entries
   const publishedEntries = feedData.posts.filter(p => p.entryNumber >= 0);
-    const moduleStates = deriveModuleStates(modules, publishedEntries);
-    const foundationState = deriveFoundationState(foundation, publishedEntries);
+  const moduleStates = deriveModuleStates(ghModules, readmes, publishedEntries);
+  const foundationState = deriveFoundationState(publishedEntries);
 
   return {
     posts: feedData.posts,
     publishedEntries,
     publishedCount: publishedEntries.length,
     totalPlannedEntries: 18,
-      modules: moduleStates,
-      foundationText: foundationState.text,
-      fetchedAt: feedData.fetchedAt,
+    modules: moduleStates,
+    foundationText: foundationState.text,
+    fetchedAt: feedData.fetchedAt,
     lastSynced,
     isStale,
   };

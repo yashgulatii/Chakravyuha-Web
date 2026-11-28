@@ -96,6 +96,7 @@ export function SiteHeader() {
           <Link to="/ledger">Ledger</Link>
           <Link to="/architecture">Architecture</Link>
           <Link to="/scope">Scope</Link>
+                  <Link to="/docs">Docs</Link>
           <a href={lab.blogUrl} target="_blank" rel="noopener noreferrer">
             Field notes ↗
           </a>

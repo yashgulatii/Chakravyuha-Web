@@ -14,6 +14,15 @@ const Architecture = lazy(() =>
   import('./pages/Architecture').then((module) => ({ default: module.Architecture })),
 )
 const Scope = lazy(() => import('./pages/Scope').then((module) => ({ default: module.Scope })))
+const DocsIndex = lazy(() =>
+  import('./pages/Docs').then((module) => ({ default: module.DocsIndex })),
+)
+const DocsPage = lazy(() =>
+  import('./pages/Docs').then((module) => ({ default: module.DocsPage })),
+)
+const Detections = lazy(() =>
+  import('./pages/Detections').then((module) => ({ default: module.Detections })),
+)
 const NotFound = lazy(() =>
   import('./pages/NotFound').then((module) => ({ default: module.NotFound })),
 )
@@ -28,6 +37,9 @@ function RouteView() {
         <Route path="/ledger" element={<Ledger />} />
         <Route path="/architecture" element={<Architecture />} />
         <Route path="/scope" element={<Scope />} />
+        <Route path="/docs" element={<DocsIndex />} />
+        <Route path="/docs/:slug" element={<DocsPage />} />
+        <Route path="/docs/detections" element={<Detections />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>

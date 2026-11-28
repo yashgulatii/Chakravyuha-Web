@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom'
 import { ArrowLink, PageMeta } from '../components/Site'
 import { Formation } from '../components/Formation'
-import { lab, modules } from '../content/lab'
-import { useLabFeed, getExecutedModuleCount, getDocumentedModuleCount } from '../content/feed'
+import { lab } from '../content/lab'
+import { useLabFeed, type ModuleState } from '../content/feed'
 import { ArchitectureDiagram } from './Shared'
 
 const method = [
@@ -34,13 +34,22 @@ function countWord(value: number) {
   return words[value] ?? String(value)
 }
 
+function getExecutedCount(modules: ModuleState[]): number {
+  return modules.filter(m => m.status === 'executed' || m.status === 'documented').length
+}
+
+function getDocumentedCount(modules: ModuleState[]): number {
+  return modules.filter(m => m.status === 'documented').length
+}
+
 export function Home() {
   const { data: feed } = useLabFeed()
-  const moduleCount = modules.length
-  const executedCount = feed ? getExecutedModuleCount(feed.modules) : modules.filter((item) => item.status === 'executed').length
-  const documentedCount = feed ? getDocumentedModuleCount(feed.modules) : modules.filter((item) => item.status === 'documented').length
-  const publishedCount = feed ? feed.publishedCount : lab.publishedPosts
-  const plannedPosts = feed ? feed.totalPlannedEntries : lab.plannedPosts
+  const moduleStates = feed?.modules ?? []
+  const moduleCount = moduleStates.length
+  const executedCount = getExecutedCount(moduleStates)
+  const documentedCount = getDocumentedCount(moduleStates)
+  const publishedCount = feed?.publishedCount ?? lab.publishedPosts
+  const plannedPosts = feed?.totalPlannedEntries ?? lab.plannedPosts
 
   return (
     <>
@@ -53,7 +62,7 @@ export function Home() {
               {countWord(moduleCount)} rings. Each one breached, then explained from the other side.
             </h1>
             <p className="hero__summary">
-              A closed Active Directory lab where every attack is mapped to MITRE ATT&amp;CK
+              A closed Active Directory lab where every attack is mapped to MITRE ATT&CK
               and paired with the detection that should have caught it. Built and documented
               by the project author.
             </p>
@@ -89,14 +98,12 @@ export function Home() {
             <h2 id="ledger-title">The ledger</h2>
           </div>
           <ol className="ring-index">
-            {modules.map((item) => (
-              <li key={item.n}>
-                <ArrowLink to={`/ring/${item.n}`} className="ring-index__link">
-                  <span className="mono">{item.n}</span>
-                  <span>{item.name}</span>
-                  <span className={`status status--${item.status}`}>
-                    {item.status === 'executed' ? 'Executed · write-up pending' : item.status}
-                  </span>
+            {moduleStates.map((state) => (
+              <li key={state.ring}>
+                <ArrowLink to={`/ring/${state.ring}`} className="ring-index__link">
+                  <span className="mono">{state.ring}</span>
+                  <span>{state.name}</span>
+                  <span className={`status status--${state.status}`}>{state.statusText}</span>
                 </ArrowLink>
               </li>
             ))}

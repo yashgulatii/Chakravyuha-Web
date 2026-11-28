@@ -1,47 +1,32 @@
 ﻿import { useParams } from 'react-router-dom'
 import { ArrowLink, PageMeta } from '../components/Site'
 import { Formation } from '../components/Formation'
-import { lab, modules } from '../content/lab'
-import { useLabFeed, getModuleState } from '../content/feed'
+import { lab } from '../content/lab'
+import { useLabFeed, type ModuleState, type LabFeedData } from '../content/feed'
 import { NotFound } from './NotFound'
-
-function statusText(status: 'planned' | 'executed' | 'documented') {
-  if (status === 'executed') return 'Executed · write-up pending'
-  return status
-}
 
 export function RingPage() {
   const { n } = useParams()
   const { data: feed } = useLabFeed()
   const moduleNumber = Number(n)
-  const baseModule = modules.find((item) => item.n === moduleNumber)
-  if (!baseModule) return <NotFound />
+  const module = feed?.modules.find((item) => item.ring === moduleNumber)
+  if (!module) return <NotFound />
   
-  // Derive module state from feed data
-  const module = feed ? getModuleState(baseModule, feed.publishedEntries) : {
-    ...baseModule,
-    status: baseModule.status,
-    statusText: statusText(baseModule.status),
-    entries: baseModule.entries,
-    allEntriesPublished: false,
-    hasWriteUp: false
-  }
-  
-  const previousModule = modules.find((item) => item.n === moduleNumber - 1)
-  const nextModule = modules.find((item) => item.n === moduleNumber + 1)
+  const previousModule = feed?.modules.find((item) => item.ring === moduleNumber - 1)
+  const nextModule = feed?.modules.find((item) => item.ring === moduleNumber + 1)
 
   return (
     <>
       <PageMeta
-        title={`Module ${module.n}: ${module.name} | ${lab.name}`}
-        path={`/ring/${module.n}`}
+        title={`Ring ${module.ring}: ${module.name} | ${lab.name}`}
+        path={`/ring/${module.ring}`}
       />
       <main id="main-content" className="page-main page-fade">
         <div className="ring-page-heading">
-          <p className="kicker">Module {module.n} · {module.statusText}</p>
+          <p className="kicker">Ring {module.ring} · {module.statusText}</p>
           <h1>{module.name}</h1>
           <div className="ring-page-heading__formation">
-            <Formation currentRing={module.n} compact />
+            <Formation currentRing={module.ring} compact />
           </div>
         </div>
 
@@ -54,35 +39,54 @@ export function RingPage() {
                       <Marginalia module={module} feed={feed} />
           </aside>
           <article className="ring-entry">
-            {baseModule.statusNote && (
-              <p className="status-note">{baseModule.statusNote}</p>
+                      {module.readmeContent && (
+                        <div className="ring-readme" dangerouslySetInnerHTML={{ __html: module.readmeContent }} />
             )}
-            <section className="ring-writeup-section">
-              <h2>I. The breach</h2>
-              <p>{module.hasWriteUp ? 'Write-up available.' : 'Write-up pending.'}</p>
-            </section>
-            <section className="ring-writeup-section">
-              <h2>II. What the logs saw</h2>
-              <p>{module.hasWriteUp ? 'Write-up available.' : 'Write-up pending.'}</p>
-            </section>
-            <section className="ring-writeup-section ring-writeup-section--detection">
-              <h2>III. What would have stopped it</h2>
-              <p>{module.hasWriteUp ? 'Write-up available.' : 'Write-up pending.'}</p>
-              </section>
+                      {module.readmeContent ? (
+                        <>
+                          <section className="ring-writeup-section">
+                            <h2>I. The breach</h2>
+                            <p>Write-up available.</p>
+                          </section>
+                          <section className="ring-writeup-section">
+                            <h2>II. What the logs saw</h2>
+                            <p>Write-up available.</p>
+                          </section>
+                          <section className="ring-writeup-section ring-writeup-section--detection">
+                            <h2>III. What would have stopped it</h2>
+                            <p>Write-up available.</p>
+                          </section>
+                        </>
+                      ) : (
+                        <>
+                          <section className="ring-writeup-section">
+                            <h2>I. The breach</h2>
+                            <p>Write-up pending.</p>
+                          </section>
+                          <section className="ring-writeup-section">
+                            <h2>II. What the logs saw</h2>
+                            <p>Write-up pending.</p>
+                          </section>
+                          <section className="ring-writeup-section ring-writeup-section--detection">
+                            <h2>III. What would have stopped it</h2>
+                            <p>Write-up pending.</p>
+                          </section>
+                        </>
+                      )}
           </article>
         </div>
 
         <nav className="ring-pagination" aria-label="Ring navigation">
           {previousModule ? (
-            <ArrowLink to={`/ring/${previousModule.n}`}>
-              ← Module {previousModule.n} · {previousModule.name}
+                    <ArrowLink to={`/ring/${previousModule.ring}`}>
+                      ← Module {previousModule.ring} · {previousModule.name}
             </ArrowLink>
           ) : (
             <span />
           )}
           {nextModule ? (
-            <ArrowLink to={`/ring/${nextModule.n}`}>
-              Module {nextModule.n} · {nextModule.name} →
+                    <ArrowLink to={`/ring/${nextModule.ring}`}>
+                      Module {nextModule.ring} · {nextModule.name} →
             </ArrowLink>
           ) : (
             <span />
@@ -94,37 +98,18 @@ export function RingPage() {
 }
 
 function Marginalia({ module, feed }: { 
-  module: { 
-    n: number; 
-    name: string; 
-    attack: string[]; 
-    keyEvent: string; 
-    tools: string[]; 
-    entries: number[];
-    statusText: string;
-    allEntriesPublished: boolean;
-    hasWriteUp: boolean;
-    writeUpUrl?: string;
-  },
-  feed: { posts: Array<{ entryNumber: number; slug: string }> } | null
+  module: ModuleState;
+  feed: LabFeedData | null
 }) {
   return (
     <dl className="marginalia__list">
       <div>
         <dt>Module</dt>
-        <dd>{module.n} · {module.name}</dd>
+                <dd>Ring {module.ring} · {module.name}</dd>
       </div>
       <div>
         <dt>ATT&CK ID</dt>
-        <dd className="mono">{module.attack.join(', ')}</dd>
-      </div>
-      <div>
-        <dt>Key event</dt>
-        <dd className="mono">{module.keyEvent}</dd>
-      </div>
-      <div>
-        <dt>Tools</dt>
-        <dd className="mono">{module.tools.join(', ')}</dd>
+                <dd className="mono">{module.attack_id}</dd>
       </div>
       <div>
         <dt>Entries</dt>
@@ -153,6 +138,16 @@ function Marginalia({ module, feed }: {
         <dt>Lab status</dt>
         <dd>{module.statusText}</dd>
       </div>
+              {module.githubUrl && (
+                <div>
+                  <dt>Source</dt>
+                  <dd>
+                    <a href={module.githubUrl} target="_blank" rel="noopener noreferrer" className="text-sm">
+                      View on GitHub
+                    </a>
+                  </dd>
+                </div>
+              )}
     </dl>
   )
 }

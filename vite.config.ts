@@ -5,6 +5,18 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { lab, modules } from './src/content/lab.js'
 
+const DOCS_FILES = [
+  { slug: 'readme', title: 'README' },
+  { slug: 'decisions', title: 'Decisions' },
+  { slug: 'architecture', title: 'Architecture' },
+  { slug: 'lab-build', title: 'Lab Build' },
+  { slug: 'log-pipeline', title: 'Log Pipeline' },
+  { slug: 'attack-readiness-gate', title: 'Attack Readiness Gate' },
+  { slug: 'engage-mapping', title: 'ENGAGE Mapping' },
+  { slug: 'deception', title: 'Deception' },
+  { slug: 'hardening', title: 'Hardening' },
+]
+
 interface StaticPage {
   path: string
   title: string
@@ -52,6 +64,21 @@ function routeMetadataPlugin(): Plugin {
       title: `Module ${module.n}: ${module.name} — ${lab.name}`,
       description: `Module ${module.n}, ${module.name}, in the ${lab.fullName}.`,
     })),
+    {
+      path: '/docs',
+      title: `Documentation — ${lab.name}`,
+      description: `Documentation for the ${lab.fullName}.`,
+    },
+    ...DOCS_FILES.map((doc) => ({
+      path: `/docs/${doc.slug}`,
+      title: `${doc.title} — Documentation — ${lab.name}`,
+      description: `${doc.title} documentation for the ${lab.fullName}.`,
+    })),
+    {
+      path: '/docs/detections',
+      title: `Detections — Documentation — ${lab.name}`,
+      description: `Sigma and Wazuh detection rules for ${lab.fullName}.`,
+    },
   ]
 
   function renderPage(template: string, page: StaticPage) {
