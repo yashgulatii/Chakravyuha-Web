@@ -4,7 +4,7 @@ on:
   schedule:
     # Run every 6 hours (at 0, 6, 12, 18 UTC)
     - cron: '0 */6 * * *'
-  workflow_dispatch: # Allow manual trigger
+  workflow_dispatch: {} # Allow manual trigger
   repository_dispatch:
     types: [rebuild-site]
 
@@ -19,7 +19,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-                node-version: '22'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
