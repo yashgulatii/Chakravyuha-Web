@@ -1829,6 +1829,16 @@ button {
     line-height: 1.6;
   }
 
+  .docs-card-excerpt {
+    color: var(--ink-soft);
+    font-size: 14px;
+    line-height: 1.6;
+    margin-top: 8px;
+    min-height: 3em;
+    display: -webkit-box;
+    overflow: hidden;
+  }
+
   .docs-page .docs-header {
     margin-bottom: 32px;
   }
