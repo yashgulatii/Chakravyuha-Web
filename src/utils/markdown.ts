@@ -16,6 +16,20 @@ const purify = DOMPurify(window)
 function rewriteUrls(html: string, basePath: string): string {
   const githubBase = 'https://raw.githubusercontent.com/yashgulatii/Chakravyuha/main'
 
+  // Helper to normalize paths (resolve ../ and ./)
+  function normalizePath(p: string): string {
+    const parts = p.split('/')
+    const result: string[] = []
+    for (const part of parts) {
+      if (part === '..') {
+        if (result.length > 0) result.pop()
+      } else if (part !== '.' && part !== '') {
+        result.push(part)
+      }
+    }
+    return result.join('/')
+  }
+
   // Rewrite relative links: [text](relative/path.md) -> [text](https://raw.githubusercontent.com/...)
   // But keep absolute URLs and site routes intact
   return html
@@ -27,22 +41,19 @@ function rewriteUrls(html: string, basePath: string): string {
           const route = url.replace(/\.md$/, '').replace(/^README$/, '')
           return `href="/docs/${route}"`
         }
-        // Handle relative paths in docs folder
-        if (url.startsWith('../') || url.startsWith('./')) {
-          return `href="${githubBase}/${basePath}/${url}"`
-        }
-        // Other relative links
-        return `href="${githubBase}/${basePath}/${url}"`
+        // Resolve relative to the doc's own path in the repo, then normalize
+        const resolved = basePath ? `${basePath}/${url}` : url
+        const normalized = normalizePath(resolved)
+        return `href="${githubBase}/${normalized}"`
       }
     )
     .replace(
       /src="(?!https?:|data:)([^"]+)"/g,
         (_match, url) => {
         // Rewrite relative image paths to GitHub raw
-        if (url.startsWith('../') || url.startsWith('./')) {
-          return `src="${githubBase}/${basePath}/${url}"`
-        }
-        return `src="${githubBase}/${basePath}/${url}"`
+        const resolved = basePath ? `${basePath}/${url}` : url
+        const normalized = normalizePath(resolved)
+        return `src="${githubBase}/${normalized}"`
       }
     )
 }

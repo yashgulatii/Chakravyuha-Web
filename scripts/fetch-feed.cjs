@@ -143,16 +143,17 @@ function rewriteUrls(html, basePath) {
           const route = url.replace(/\.md$/, '').replace(/^README$/, '');
           return `href="/docs/${route}"`;
         }
-        // Normalize relative paths before prepending base
-        const normalized = normalizePath(url);
+        // Resolve relative to the doc's own path in the repo
+        const resolved = basePath ? `${basePath}/${url}` : url;
+        const normalized = normalizePath(resolved);
         return `href="${githubBase}/${normalized}"`;
       }
     )
     .replace(
       /src="(?!https?:|data:)([^"]+)"/g,
       (_match, url) => {
-        // Normalize relative paths before prepending base
-        const normalized = normalizePath(url);
+        const resolved = basePath ? `${basePath}/${url}` : url;
+        const normalized = normalizePath(resolved);
         return `src="${githubBase}/${normalized}"`;
       }
     );
