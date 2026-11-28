@@ -68,8 +68,11 @@ async function fetchModuleReadmes(modules) {
 
         if (response.ok) {
           const content = await response.text();
-          readmes[module.slug] = content;
-          console.log(`[fetch-feed] README fetched for ${module.slug}`);
+          // Render markdown to sanitized HTML (same pipeline as docs)
+          const basePath = path.dirname(module.writeup);
+          const html = renderMarkdown(content, basePath);
+          readmes[module.slug] = html;
+          console.log(`[fetch-feed] README fetched and rendered for ${module.slug}`);
         } else {
           console.warn(`[fetch-feed] Failed to fetch README for ${module.slug}: ${response.status}`);
         }
