@@ -118,6 +118,20 @@ function extractHeadings(markdown) {
 function rewriteUrls(html, basePath) {
   const githubBase = 'https://raw.githubusercontent.com/yashgulatii/Chakravyuha/main';
 
+  // Helper to normalize paths (resolve ../ and ./)
+  function normalizePath(p) {
+    const parts = p.split('/');
+    const result = [];
+    for (const part of parts) {
+      if (part === '..') {
+        if (result.length > 0) result.pop();
+      } else if (part !== '.' && part !== '') {
+        result.push(part);
+      }
+    }
+    return result.join('/');
+  }
+
   return html
     .replace(
       /href="(?!https?:|mailto:|#|\/)([^"]+)"/g,
@@ -126,19 +140,17 @@ function rewriteUrls(html, basePath) {
           const route = url.replace(/\.md$/, '').replace(/^README$/, '');
           return `href="/docs/${route}"`;
         }
-        if (url.startsWith('../') || url.startsWith('./')) {
-          return `href="${githubBase}/${basePath}/${url}"`;
-        }
-        return `href="${githubBase}/${basePath}/${url}"`;
+        // Normalize relative paths before prepending base
+        const normalized = normalizePath(url);
+        return `href="${githubBase}/${normalized}"`;
       }
     )
     .replace(
       /src="(?!https?:|data:)([^"]+)"/g,
       (_match, url) => {
-        if (url.startsWith('../') || url.startsWith('./')) {
-          return `src="${githubBase}/${basePath}/${url}"`;
-        }
-        return `src="${githubBase}/${basePath}/${url}"`;
+        // Normalize relative paths before prepending base
+        const normalized = normalizePath(url);
+        return `src="${githubBase}/${normalized}"`;
       }
     );
 }
