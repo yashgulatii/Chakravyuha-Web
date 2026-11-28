@@ -163,8 +163,14 @@ function sanitizeHtml(html) {
   });
 }
 
+// Normalize non-standard markdown image syntax !img(path) -> ![img](path)
+function normalizeMarkdownImageSyntax(markdown) {
+  return markdown.replace(/!img\(([^)]+)\)/g, '![img]($1)');
+}
+
 function renderMarkdown(markdown, basePath) {
-  const html = marked.parse(markdown);
+  const normalized = normalizeMarkdownImageSyntax(markdown);
+  const html = marked.parse(normalized);
   const rewritten = rewriteUrls(html, basePath);
   return sanitizeHtml(rewritten);
 }
