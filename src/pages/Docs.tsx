@@ -1,79 +1,20 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { Helmet } from 'react-helmet-async'
 import { lab } from '../content/lab'
 import { useLabFeed } from '../content/feed'
-import { renderMarkdown, extractHeadings, DOCS_FILES } from '../utils/markdown'
+import type { DocFile } from '../content/feed'
 
-const GITHUB_BASE = 'https://raw.githubusercontent.com/yashgulatii/Chakravyuha/main'
 const GITHUB_REPO = 'https://github.com/yashgulatii/Chakravyuha'
 
-interface DocFile {
-  path: string
-  title: string
-  slug: string
-  content?: string
-  html?: string
-  headings?: Array<{ level: number; text: string; slug: string }>
-  error?: string
-  lastFetched?: number
-}
-
-async function fetchDocFile(path: string): Promise<string | null> {
-  try {
-    const res = await fetch(`${GITHUB_BASE}/${path}`)
-    if (!res.ok) return null
-    return await res.text()
-  } catch {
-    return null
-  }
-}
-
 function useDocs() {
-  const [docs, setDocs] = useState<DocFile[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data: feed, loading: feedLoading, error: feedError } = useLabFeed()
 
-  useEffect(() => {
-    let cancelled = false
-
-    async function loadDocs() {
-      setLoading(true)
-      setError(null)
-
-      try {
-        const fetched = await Promise.all(
-          DOCS_FILES.map(async (doc) => {
-            const content = await fetchDocFile(doc.path)
-            if (!content) {
-              return { ...doc, error: 'Failed to fetch', lastFetched: Date.now() }
-            }
-            const headings = extractHeadings(content)
-            const html = renderMarkdown(content, doc.path.split('/').slice(0, -1).join('/'))
-            return { ...doc, content, html, headings, lastFetched: Date.now() }
-          })
-        )
-
-        if (!cancelled) {
-          setDocs(fetched)
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError('Failed to load documentation')
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      }
-    }
-
-    loadDocs()
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  // Docs come from build-time cache via feed (object keyed by slug, convert to array)
+  const docsObj = (feed?.docs || {}) as Record<string, DocFile>
+  const docs = Object.values(docsObj)
+  const loading = feedLoading
+  const error = feedError?.message || null
 
   return { docs, loading, error }
 }

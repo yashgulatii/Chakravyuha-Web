@@ -31,6 +31,9 @@ export interface LabFeedData {
   fetchedAt: string;
   lastSynced: Date | null;
   isStale: boolean;
+  // Build-time cached data (docs & detections)
+  docs: DocFile[];
+  detections: DetectionsData;
 }
 
 export interface ModuleState {
@@ -56,8 +59,37 @@ export interface FoundationState {
   allPublished: boolean;
 }
 
-// GitHub module from modules.yml
-interface GitHubModule {
+// Docs types
+export interface DocFile {
+  path: string;
+  title: string;
+  slug: string;
+  content?: string;
+  html?: string;
+  headings?: Array<{ level: number; text: string; slug: string }>;
+  error?: string;
+  lastFetched?: number;
+}
+
+export interface DetectionsData {
+  sigma: DetectionRule[];
+  wazuh: DetectionRule[];
+}
+
+export interface DetectionRule {
+  name: string;
+  path: string;
+  content: string;
+  // Parsed fields
+  title?: string;
+  tags?: string[];
+  level?: string;
+  status?: string;
+  mitre_tags?: string[];
+}
+
+// GitHub module from build-time cache (pre-parsed from modules.yml)
+interface CachedModule {
   ring: number;
   slug: string;
   name: string;
@@ -66,18 +98,16 @@ interface GitHubModule {
   writeup: string | null;
   evidence_dir: string | null;
   entries: number[];
+  readmeContent: string | null;
 }
 
 // --- Constants ---
 
 const SUPABASE_FUNCTION_URL = 'https://tupmnabopwmxamloscjb.supabase.co/functions/v1/hashnode-feed';
-const GITHUB_RAW_BASE = 'https://raw.githubusercontent.com/yashgulatii/Chakravyuha/main';
 const GITHUB_REPO_URL = 'https://github.com/yashgulatii/Chakravyuha';
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const STORAGE_KEY = 'chakravyuha-feed-cache';
 const STORAGE_TIMESTAMP_KEY = 'chakravyuha-feed-timestamp';
-const MODULES_STORAGE_KEY = 'chakravyuha-modules-cache';
-const MODULES_STORAGE_TIMESTAMP_KEY = 'chakravyuha-modules-timestamp';
 
 // --- Entry Number Resolution ---
 
@@ -102,7 +132,7 @@ function enrichPostsWithEntryNumbers(posts: Omit<Post, 'entryNumber'>[]): Post[]
 // --- Module State Derivation from GitHub Data ---
 
 function getModuleState(
-  ghModule: GitHubModule,
+  ghModule: CachedModule,
   readmeContent: string | null,
   publishedEntries: Post[]
 ): ModuleState {
@@ -144,7 +174,7 @@ function getModuleState(
 }
 
 function deriveModuleStates(
-  ghModules: GitHubModule[],
+  ghModules: CachedModule[],
   readmes: Record<string, string>,
   publishedEntries: Post[]
 ): ModuleState[] {
@@ -206,79 +236,6 @@ function isCacheFresh(timestamp: number): boolean {
   return Date.now() - timestamp < CACHE_TTL_MS;
 }
 
-// --- Modules Cache Management (GitHub - localStorage, longer TTL) ---
-
-const MODULES_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-
-function getModulesCache(): { modules: GitHubModule[]; readmes: Record<string, string>; timestamp: number } | null {
-  try {
-    const cached = localStorage.getItem(MODULES_STORAGE_KEY);
-    const timestamp = localStorage.getItem(MODULES_STORAGE_TIMESTAMP_KEY);
-    if (cached && timestamp) {
-      return { ...JSON.parse(cached), timestamp: Number(timestamp) };
-    }
-  } catch {}
-  return null;
-}
-
-function setModulesCache(modules: GitHubModule[], readmes: Record<string, string>): void {
-  try {
-    localStorage.setItem(MODULES_STORAGE_KEY, JSON.stringify({ modules, readmes }));
-    localStorage.setItem(MODULES_STORAGE_TIMESTAMP_KEY, Date.now().toString());
-  } catch {}
-}
-
-function isModulesCacheFresh(timestamp: number): boolean {
-  return Date.now() - timestamp < MODULES_CACHE_TTL_MS;
-}
-
-// --- GitHub Fetching ---
-
-async function fetchGitHubModules(signal?: AbortSignal): Promise<{ modules: GitHubModule[]; readmes: Record<string, string> }> {
-  // Try localStorage cache first
-  const cached = getModulesCache();
-  if (cached && isModulesCacheFresh(cached.timestamp)) {
-    return { modules: cached.modules, readmes: cached.readmes };
-  }
-
-  // Fetch modules.yml
-  const modulesResponse = await fetch(`${GITHUB_RAW_BASE}/modules.yml`, {
-    signal,
-    headers: { Accept: 'application/yaml' },
-  });
-
-  if (!modulesResponse.ok) {
-    throw new Error(`modules.yml fetch failed with status ${modulesResponse.status}`);
-  }
-
-  const yamlText = await modulesResponse.text();
-  const yaml = await import('js-yaml');
-  const modules = yaml.load(yamlText) as GitHubModule[];
-
-  // Fetch READMEs for executed modules with writeup
-  const readmes: Record<string, string> = {};
-  for (const module of modules) {
-    if (module.writeup && module.status === 'executed') {
-      try {
-        const readmeResponse = await fetch(`${GITHUB_RAW_BASE}/${module.writeup}`, {
-          signal,
-          headers: { Accept: 'text/markdown' },
-        });
-        if (readmeResponse.ok) {
-          readmes[module.slug] = await readmeResponse.text();
-        }
-      } catch {
-        // Ignore individual README fetch failures
-      }
-    }
-  }
-
-  // Cache for 1 hour
-  setModulesCache(modules, readmes);
-
-  return { modules, readmes };
-}
-
 // --- Feed Fetching ---
 
 async function fetchFeed(signal?: AbortSignal): Promise<FeedResponse> {
@@ -298,21 +255,7 @@ async function fetchFeed(signal?: AbortSignal): Promise<FeedResponse> {
 // --- Main Feed Logic ---
 
 export async function getLabFeedData(forceRefresh = false): Promise<LabFeedData> {
-  // 1. Get GitHub modules (with localStorage cache)
-  let ghModules: GitHubModule[];
-  let readmes: Record<string, string>;
-  try {
-    const { modules, readmes: fetchedReadmes } = await fetchGitHubModules();
-    ghModules = modules;
-    readmes = fetchedReadmes;
-  } catch (error) {
-    // Fall back to build-time cache if available
-    console.warn('[feed] GitHub modules fetch failed, using build-time cache:', error);
-    ghModules = (feedCache as any).modules || [];
-    readmes = (feedCache as any).moduleReadmes || {};
-  }
-
-  // 2. Try to get cached feed data (localStorage with 10-min TTL)
+  // 1. Try to get cached feed data (localStorage with 10-min TTL)
   const cached = getCachedData();
   const hasFreshCache = cached && isCacheFresh(cached.timestamp);
 
@@ -345,10 +288,19 @@ export async function getLabFeedData(forceRefresh = false): Promise<LabFeedData>
     }
   }
 
-  // 3. Derive module states from GitHub modules + published entries
+  // 2. Use build-time cached modules (pre-parsed from modules.yml at build time)
+  // No client-side GitHub fetch - modules come from feed-cache.json
+  const cachedModules = (feedCache as any).modules || [];
+  const cachedReadmes = (feedCache as any).moduleReadmes || {};
+
+  // 3. Derive module states from build-time cached modules + published entries
   const publishedEntries = feedData.posts.filter(p => p.entryNumber >= 0);
-  const moduleStates = deriveModuleStates(ghModules, readmes, publishedEntries);
+  const moduleStates = deriveModuleStates(cachedModules, cachedReadmes, publishedEntries);
   const foundationState = deriveFoundationState(publishedEntries);
+
+  // 4. Include build-time cached docs and detections
+  const docs = (feedCache as any).docs || [];
+  const detections = (feedCache as any).detections || { sigma: [], wazuh: [] };
 
   return {
     posts: feedData.posts,
@@ -360,6 +312,8 @@ export async function getLabFeedData(forceRefresh = false): Promise<LabFeedData>
     fetchedAt: feedData.fetchedAt,
     lastSynced,
     isStale,
+    docs,
+    detections,
   };
 }
 

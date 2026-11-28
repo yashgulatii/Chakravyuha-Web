@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Prebuild script: fetches the live Hashnode feed from the Supabase Edge Function,
- * fetches modules.yml and module READMEs from GitHub,
+ * fetches modules.yml, module READMEs, docs files, and detection rules from GitHub,
  * and writes a snapshot to src/content/feed-cache.json for build-time fallback.
  *
  * This runs during `npm run build` (via "prebuild" script in package.json).
@@ -15,6 +15,9 @@ const path = require('path');
 const SUPABASE_FUNCTION_URL = 'https://tupmnabopwmxamloscjb.supabase.co/functions/v1/hashnode-feed';
 const GITHUB_RAW_BASE = 'https://raw.githubusercontent.com/yashgulatii/Chakravyuha/main';
 const CACHE_PATH = path.join(__dirname, '..', 'src', 'content', 'feed-cache.json');
+
+// Import constants from the shared file
+const { DOCS_FILES, DETECTION_FOLDERS } = require('../src/utils/constants.cjs');
 
 async function fetchFeed() {
   console.log('[fetch-feed] Fetching live feed from Supabase Edge Function...');
@@ -77,6 +80,226 @@ async function fetchModuleReadmes(modules) {
   }
 
   return readmes;
+}
+
+// Markdown rendering for build-time (using same libs as src/utils/markdown.ts)
+const { marked } = require('marked');
+const DOMPurify = require('dompurify');
+const { JSDOM } = require('jsdom');
+const window = new JSDOM('').window;
+const purify = DOMPurify(window);
+
+marked.setOptions({
+  gfm: true,
+  breaks: true,
+});
+
+function slugify(text) {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function extractHeadings(markdown) {
+  const headings = [];
+  const headingRegex = /^(#{1,6})\s+(.+)$/gm;
+  let match;
+  while ((match = headingRegex.exec(markdown)) !== null) {
+    const level = match[1].length;
+    const text = match[2].trim();
+    headings.push({ level, text, slug: slugify(text) });
+  }
+  return headings;
+}
+
+function rewriteUrls(html, basePath) {
+  const githubBase = 'https://raw.githubusercontent.com/yashgulatii/Chakravyuha/main';
+
+  return html
+    .replace(
+      /href="(?!https?:|mailto:|#|\/)([^"]+)"/g,
+      (_match, url) => {
+        if (url.endsWith('.md')) {
+          const route = url.replace(/\.md$/, '').replace(/^README$/, '');
+          return `href="/docs/${route}"`;
+        }
+        if (url.startsWith('../') || url.startsWith('./')) {
+          return `href="${githubBase}/${basePath}/${url}"`;
+        }
+        return `href="${githubBase}/${basePath}/${url}"`;
+      }
+    )
+    .replace(
+      /src="(?!https?:|data:)([^"]+)"/g,
+      (_match, url) => {
+        if (url.startsWith('../') || url.startsWith('./')) {
+          return `src="${githubBase}/${basePath}/${url}"`;
+        }
+        return `src="${githubBase}/${basePath}/${url}"`;
+      }
+    );
+}
+
+function sanitizeHtml(html) {
+  return purify.sanitize(html, {
+    ADD_TAGS: ['mermaid', 'details', 'summary'],
+    ADD_ATTR: ['class', 'id', 'data-mermaid'],
+    ALLOW_DATA_ATTR: true,
+  });
+}
+
+function renderMarkdown(markdown, basePath) {
+  const html = marked.parse(markdown);
+  const rewritten = rewriteUrls(html, basePath);
+  return sanitizeHtml(rewritten);
+}
+
+async function fetchDocFiles() {
+  const docs = {};
+
+  for (const doc of DOCS_FILES) {
+    try {
+      console.log(`[fetch-feed] Fetching doc: ${doc.path}...`);
+      const response = await fetch(`${GITHUB_RAW_BASE}/${doc.path}`, {
+        headers: { Accept: 'text/markdown' },
+      });
+
+      if (response.ok) {
+        const content = await response.text();
+        // Render markdown to HTML at build time
+        const basePath = path.dirname(doc.path);
+        const html = renderMarkdown(content, basePath);
+        const headings = extractHeadings(content);
+        docs[doc.slug] = { ...doc, content, html, headings };
+        console.log(`[fetch-feed] Doc fetched and rendered: ${doc.slug}`);
+      } else {
+        console.warn(`[fetch-feed] Failed to fetch doc ${doc.path}: ${response.status}`);
+        docs[doc.slug] = { ...doc, error: `Failed to fetch (${response.status})` };
+      }
+    } catch (error) {
+      console.warn(`[fetch-feed] Error fetching doc ${doc.path}:`, error.message);
+      docs[doc.slug] = { ...doc, error: error.message };
+    }
+  }
+
+  return docs;
+}
+
+async function fetchGitHubTree(folder) {
+  // Use GitHub API to list files in a folder
+  const apiUrl = `https://api.github.com/repos/yashgulatii/Chakravyuha/contents/${folder}`;
+  try {
+    const response = await fetch(apiUrl, {
+      headers: { Accept: 'application/vnd.github.v3+json' },
+    });
+    if (!response.ok) {
+      console.warn(`[fetch-feed] Failed to list ${folder}: ${response.status}`);
+      return [];
+    }
+    const items = await response.json();
+    return items.filter(item => item.type === 'file');
+  } catch (error) {
+    console.warn(`[fetch-feed] Error listing ${folder}:`, error.message);
+    return [];
+  }
+}
+
+async function fetchDetectionFiles() {
+  const detections = { sigma: [], wazuh: [] };
+  const yaml = require('js-yaml');
+
+  // Simple XML parser for Wazuh rules (extracts rule attributes)
+  function parseWazuhXML(xmlContent) {
+    const rules = [];
+    // Match rule elements with id, level, and description
+    const ruleRegex = /<rule\s+([^>]+)>([\s\S]*?)<\/rule>/g;
+    let match;
+    while ((match = ruleRegex.exec(xmlContent)) !== null) {
+      const attrs = match[1];
+      const ruleContent = match[2];
+      const idMatch = attrs.match(/id="([^"]+)"/);
+      const levelMatch = attrs.match(/level="([^"]+)"/);
+      const descMatch = ruleContent.match(/<description>([^<]+)<\/description>/);
+      const sidMatch = attrs.match(/if_sid="([^"]+)"/);
+      
+      // Try to extract MITRE tags from comments
+      const mitreMatch = ruleContent.match(/ATT&CK.*?T\d{4}(?:\.\d{3})?/gi);
+      const mitreTags = mitreMatch ? [...new Set(mitreMatch)] : [];
+
+      if (idMatch) {
+        rules.push({
+          id: idMatch[1],
+          level: levelMatch ? levelMatch[1] : '0',
+          description: descMatch ? descMatch[1] : 'No description',
+          parent_sid: sidMatch ? sidMatch[1] : null,
+          mitre_tags: mitreTags,
+        });
+      }
+    }
+    return rules;
+  }
+
+  for (const [type, folder] of Object.entries(DETECTION_FOLDERS)) {
+    console.log(`[fetch-feed] Fetching ${type} rules from ${folder}...`);
+    const files = await fetchGitHubTree(folder);
+
+    for (const file of files) {
+      try {
+        const response = await fetch(file.download_url, {
+          headers: { Accept: 'text/plain' },
+        });
+        if (response.ok) {
+          const content = await response.text();
+          let parsedRule = { name: file.name, path: file.path, content };
+
+          if (type === 'sigma') {
+            try {
+              const parsed = yaml.load(content);
+              parsedRule = {
+                ...parsedRule,
+                title: parsed.title || file.name.replace(/\.yml$/, ''),
+                tags: parsed.tags || [],
+                level: parsed.level || 'unknown',
+                status: parsed.status || 'unknown',
+                mitre_tags: parsed.tags?.filter(t => t.startsWith('attack.')) || [],
+              };
+            } catch (e) {
+              console.warn(`[fetch-feed] Failed to parse Sigma YAML ${file.name}:`, e.message);
+            }
+          } else if (type === 'wazuh') {
+            const parsedRules = parseWazuhXML(content);
+            if (parsedRules.length > 0) {
+              // Use the highest level rule as representative
+              const topRule = parsedRules.reduce((a, b) => 
+                parseInt(a.level) > parseInt(b.level) ? a : b
+              );
+              parsedRule = {
+                ...parsedRule,
+                title: topRule.description,
+                level: topRule.level,
+                status: 'active',
+                tags: parsedRules.map(r => `rule-${r.id}`),
+                mitre_tags: [...new Set(parsedRules.flatMap(r => r.mitre_tags || []))],
+                _allRules: parsedRules, // Keep all parsed rules for detail view
+              };
+            }
+          }
+
+          detections[type].push(parsedRule);
+          console.log(`[fetch-feed] Fetched ${type} rule: ${file.name}`);
+        } else {
+          console.warn(`[fetch-feed] Failed to fetch ${file.name}: ${response.status}`);
+        }
+      } catch (error) {
+        console.warn(`[fetch-feed] Error fetching ${file.name}:`, error.message);
+      }
+    }
+  }
+
+  return detections;
 }
 
 function enrichPostsWithEntryNumbers(posts) {
@@ -145,6 +368,8 @@ async function main() {
     const feedData = await fetchFeed();
     const modules = await fetchGitHubModules();
     const readmes = await fetchModuleReadmes(modules);
+    const docs = await fetchDocFiles();
+    const detections = await fetchDetectionFiles();
 
     // Attach readme content to modules
     const modulesWithReadmes = modules.map(m => ({
@@ -170,6 +395,8 @@ async function main() {
       posts: enrichedPosts,
       modules: derivedModules,
       moduleReadmes: readmes,
+      docs,
+      detections,
       foundationText,
       fetchedAt: new Date().toISOString(),
       publishedCount: publishedEntries.length,
@@ -180,6 +407,8 @@ async function main() {
     console.log(`[fetch-feed] Cache written to ${CACHE_PATH}`);
     console.log(`[fetch-feed] Published entries: ${publishedEntries.length} of 18`);
     console.log(`[fetch-feed] Modules: ${derivedModules.filter(m => m.status === 'executed').length} executed, ${derivedModules.filter(m => m.status === 'documented').length} documented`);
+    console.log(`[fetch-feed] Docs: ${Object.keys(docs).length} files fetched`);
+    console.log(`[fetch-feed] Detections: ${detections.sigma.length} sigma, ${detections.wazuh.length} wazuh rules`);
   } catch (error) {
     console.error('[fetch-feed] ERROR:', error.message);
 

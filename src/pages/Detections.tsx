@@ -1,159 +1,11 @@
-import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Helmet } from 'react-helmet-async'
 import { lab } from '../content/lab'
 import { useLabFeed } from '../content/feed'
-import { DOCS_FILES, DETECTION_FOLDERS } from '../utils/markdown'
+import { DOCS_FILES } from '../utils/constants'
+import type { DetectionRule } from '../content/feed'
 
-const GITHUB_BASE = 'https://raw.githubusercontent.com/yashgulatii/Chakravyuha/main'
 const GITHUB_REPO = 'https://github.com/yashgulatii/Chakravyuha'
-
-interface DetectionRule {
-  path: string
-  name: string
-  title?: string
-  tags?: string[]
-  level?: string
-  status?: string
-  description?: string
-  content?: string
-  html?: string
-  error?: string
-}
-
-async function fetchFileList(folder: string): Promise<string[]> {
-  try {
-    // GitHub API to list files in a directory
-    const apiUrl = `https://api.github.com/repos/yashgulatii/Chakravyuha/contents/${folder}?ref=main`
-    const res = await fetch(apiUrl)
-    if (!res.ok) return []
-    const data = await res.json()
-    return data
-      .filter((item: any) => item.type === 'file' && (item.name.endsWith('.yml') || item.name.endsWith('.yaml') || item.name.endsWith('.xml')))
-      .map((item: any) => `${folder}/${item.name}`)
-  } catch {
-    return []
-  }
-}
-
-async function fetchDetectionContent(path: string): Promise<string | null> {
-  try {
-    const res = await fetch(`${GITHUB_BASE}/${path}`)
-    if (!res.ok) return null
-    return await res.text()
-  } catch {
-    return null
-  }
-}
-
-function parseSigmaRule(content: string): Partial<DetectionRule> {
-  const titleMatch = content.match(/title:\s*(.+)/)
-  const tagsMatch = content.match(/tags:\s*\[([^\]]+)\]/)
-  const levelMatch = content.match(/level:\s*(\w+)/)
-  const statusMatch = content.match(/status:\s*(\w+)/)
-  const descriptionMatch = content.match(/description:\s*(.+)/)
-
-  return {
-    title: titleMatch?.[1]?.trim()?.replace(/^["']|["']$/g, ''),
-    tags: tagsMatch?.[1]?.split(',').map((t) => t.trim().replace(/^["']|["']$/g, '')) || [],
-    level: levelMatch?.[1]?.trim(),
-    status: statusMatch?.[1]?.trim(),
-    description: descriptionMatch?.[1]?.trim()?.replace(/^["']|["']$/g, ''),
-  }
-}
-
-function parseWazuhRule(content: string): Partial<DetectionRule> {
-  // Wazuh rules are XML - parse for basic info
-  const levelMatch = content.match(/level="(\d+)"/)
-  const descriptionMatch = content.match(/<description>([^<]+)<\/description>/)
-  const groupsMatch = content.match(/<groups>([^<]+)<\/groups>/)
-
-  return {
-    title: descriptionMatch?.[1]?.trim(),
-    tags: groupsMatch?.[1]?.split(',').map((t) => t.trim()) || [],
-    level: levelMatch?.[1]?.trim(),
-    status: 'stable',
-  }
-}
-
-function useDetections() {
-  const [sigmaRules, setSigmaRules] = useState<DetectionRule[]>([])
-  const [wazuhRules, setWazuhRules] = useState<DetectionRule[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function loadDetections() {
-      setLoading(true)
-      setError(null)
-
-      try {
-        // Fetch file lists
-        const [sigmaFiles, wazuhFiles] = await Promise.all([
-          fetchFileList(DETECTION_FOLDERS.sigma),
-          fetchFileList(DETECTION_FOLDERS.wazuh),
-        ])
-
-        // Fetch and parse Sigma rules
-        const sigmaResults: DetectionRule[] = []
-        for (const path of sigmaFiles) {
-          const content = await fetchDetectionContent(path)
-          if (!content) continue
-          const parsed = parseSigmaRule(content)
-          sigmaResults.push({
-            path,
-            name: path.split('/').pop()?.replace(/\.(yml|yaml)$/, '') || '',
-            content,
-            ...parsed,
-          } as DetectionRule)
-        }
-
-        // Fetch and parse Wazuh rules
-        const wazuhResults: DetectionRule[] = []
-        for (const path of wazuhFiles) {
-          const content = await fetchDetectionContent(path)
-          if (!content) continue
-          const parsed = parseWazuhRule(content)
-          wazuhResults.push({
-            path,
-            name: path.split('/').pop()?.replace(/\.xml$/, '') || '',
-            content,
-            ...parsed,
-          } as DetectionRule)
-        }
-
-        if (!cancelled) {
-          setSigmaRules(sigmaResults)
-          setWazuhRules(wazuhResults)
-          if (sigmaResults.length === 0 && sigmaFiles.length > 0) {
-            setError('Some Sigma detection rules failed to load')
-          }
-          if (wazuhResults.length === 0 && wazuhFiles.length > 0) {
-            setError('Some Wazuh detection rules failed to load')
-          }
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError('Failed to load detections')
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      }
-    }
-
-    loadDetections()
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  return { sigmaRules, wazuhRules, loading, error }
-}
 
 function DetectionTable({ rules }: { rules: DetectionRule[] }) {
   return (
@@ -211,8 +63,12 @@ function DetectionTable({ rules }: { rules: DetectionRule[] }) {
 }
 
 export function Detections() {
-  const { sigmaRules, wazuhRules, loading, error } = useDetections()
-  const { data: feed } = useLabFeed()
+  const { data: feed, loading, error } = useLabFeed()
+
+  // Detections come from build-time cache via feed
+  const detections = feed?.detections || { sigma: [], wazuh: [] }
+  const sigmaRules = detections.sigma || []
+  const wazuhRules = detections.wazuh || []
 
   return (
     <>
@@ -275,7 +131,7 @@ export function Detections() {
 
             {error && (
               <div className="docs-error" role="alert">
-                {error}
+                            {error.message}
               </div>
             )}
 
